@@ -3,6 +3,7 @@ import sqlite3
 import asyncio
 import logging
 import time
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import (
     Message, CallbackQuery, FSInputFile,
@@ -13,13 +14,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-# ==================== НАСТРОЙКИ ====================
-BOT_TOKEN = "9096866450:AAFWeA7PUmEjKiMj5v2s-PthSPCafbBUowE"
 
-# Список ID администраторов (только цифры, можно несколько через запятую)
-ADMIN_IDS = [1289964116]
+BOT_TOKEN = "ВАШ_ТОКЕН_БОТА"
+ADMIN_IDS = [1234567890, 9876543210]  
 
-# Папка для сохранения фотографий товаров на сервере
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 DB_NAME = "shop.db"
@@ -35,7 +33,6 @@ dp.include_router(router)
 def init_db():
     with sqlite3.connect(DB_NAME) as conn:
         c = conn.cursor()
-        # Таблица товаров
         c.execute("""
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +44,6 @@ def init_db():
                 in_stock INTEGER DEFAULT 1
             )
         """)
-        # Таблица корзины клиентов
         c.execute("""
             CREATE TABLE IF NOT EXISTS cart (
                 user_id INTEGER,
@@ -56,7 +52,6 @@ def init_db():
                 PRIMARY KEY (user_id, product_id)
             )
         """)
-        # Таблица заказов
         c.execute("""
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,8 +127,6 @@ def get_main_menu_kb(user_id: int):
         [InlineKeyboardButton(text="🌸 Каталог букетов", callback_data="client_catalog")],
         [InlineKeyboardButton(text=cart_text, callback_data="client_cart")]
     ])
-
-
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
@@ -211,6 +204,7 @@ async def cb_view_item(call: CallbackQuery):
         f"{p['description']}\n\n"
         f"💰 Цена: {p['price']} ₽"
     )
+
     await call.message.delete()
     if p.get("photo_file_id"):
         await call.message.answer_photo(photo=p["photo_file_id"], caption=caption, reply_markup=builder.as_markup(), parse_mode="Markdown")
@@ -218,8 +212,6 @@ async def cb_view_item(call: CallbackQuery):
         await call.message.answer_photo(photo=FSInputFile(p["photo_path"]), caption=caption, reply_markup=builder.as_markup(), parse_mode="Markdown")
     else:
         await call.message.answer(caption, reply_markup=builder.as_markup(), parse_mode="Markdown")
-
-
 @router.callback_query(F.data == "ignore")
 async def cb_ignore(call: CallbackQuery):
     await call.answer()
@@ -296,6 +288,8 @@ async def cb_checkout_start(call: CallbackQuery, state: FSMContext):
         "Введите ваше имя:",
         parse_mode="Markdown"
     )
+
+
 @router.message(OrderStates.name)
 async def step_order_name(message: Message, state: FSMContext):
     await state.update_data(customer_name=message.text.strip())
@@ -380,11 +374,9 @@ async def step_order_finish(message: Message, state: FSMContext):
         commit=True
     )
 
-    # Очищаем корзину клиента
     db_query("DELETE FROM cart WHERE user_id = ?", (user.id,), commit=True)
     await state.clear()
 
-    # Уведомление всем админам
     user_display = f"@{username}" if username != "нет_юзернейма" else f"<a href='tg://user?id={user.id}'>Открыть профиль</a>"
     admin_msg = (
         f"🔔 <b>НОВЫЙ ЗАКАЗ #{order_id}!</b>\n\n"
@@ -406,9 +398,7 @@ async def step_order_finish(message: Message, state: FSMContext):
             await bot.send_message(admin_id, admin_msg, parse_mode="HTML", reply_markup=adm_kb)
         except Exception as e:
             logging.error(f"Не удалось отправить уведомление админу {admin_id}: {e}")
-
-    # Ответ клиенту
-    await message.answer(
+            await message.answer(
         f"✅ <b>Спасибо! Ваша заявка #{order_id} успешно принята!</b>\n\n"
         f"💐 <b>Состав заказа:</b>\n{items_text}\n"
         f"💰 <b>Сумма:</b> {total_price} ₽\n\n"
@@ -443,7 +433,6 @@ async def cb_admin_menu(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text("🔧 Панель администратора «Цветы Белгород»", reply_markup=get_admin_main_kb(), parse_mode="Markdown")
 
 
-# --- 1. Добавление букета ---
 @router.callback_query(F.data == "adm_add")
 async def cb_add_start(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
@@ -481,10 +470,10 @@ async def step_add_photo(message: Message, state: FSMContext):
     photo = message.photo[-1]
     file_info = await bot.get_file(photo.file_id)
 
-    # Сохраняем фото на сервер в папку uploads/
     filename = f"bouquet_{int(time.time())}_{photo.file_unique_id}.jpg"
     filepath = os.path.join(UPLOAD_DIR, filename)
     await bot.download_file(file_info.file_path, filepath)
+
     db_query(
         "INSERT INTO products (name, description, price, photo_path, photo_file_id, in_stock) VALUES (?, ?, ?, ?, ?, 1)",
         (data["name"], data["description"], data["price"], filepath, photo.file_id),
@@ -498,7 +487,6 @@ async def step_add_photo(message: Message, state: FSMContext):
     )
 
 
-# --- 2. Управление каталогом ---
 @router.callback_query(F.data == "adm_catalog")
 async def cb_catalog(call: CallbackQuery):
     if not is_admin(call.from_user.id):
@@ -507,7 +495,6 @@ async def cb_catalog(call: CallbackQuery):
     if not products:
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="adm_menu")]])
         return await call.message.edit_text("Каталог пока пуст.", reply_markup=kb)
-
     builder = InlineKeyboardBuilder()
     for p in products:
         status_icon = "✅" if p["in_stock"] else "🚫"
@@ -600,7 +587,6 @@ async def step_edit_price(message: Message, state: FSMContext):
     await message.answer("✅ Цена успешно обновлена!", reply_markup=get_admin_main_kb())
 
 
-# --- 3. Активные заказы ---
 @router.callback_query(F.data == "adm_orders")
 async def cb_orders(call: CallbackQuery):
     if not is_admin(call.from_user.id):
@@ -653,9 +639,25 @@ async def cb_order_done(call: CallbackQuery):
     await cb_orders(call)
 
 
-# ==================== ЗАПУСК ====================
+# --- ЗАГЛУШКА ВЕБ-СЕРВЕРА ДЛЯ RENDER WEB SERVICE ---
+async def handle_ping(request):
+    return web.Response(text="Bot is running!")
+
+
 async def main():
     init_db()
+
+    # Запускаем легкий веб-сервер на порту, который требует Render (порт берется из системной переменной PORT)
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info(f"Веб-сервер запущен на порту {port} для прохождения проверки Render.")
+
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Бот «Цветы Белгород» успешно запущен!")
     await dp.start_polling(bot)
