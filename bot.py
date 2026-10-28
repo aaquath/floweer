@@ -16,7 +16,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "9096866450:AAFWeA7PUmEjKiMj5v2s-PthSPCafbBUowE"
-ADMIN_IDS = [1289964116]  # Ваши ID админов
+ADMIN_IDS = [1289964116, 6126442692]  # Ваши ID админов
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
