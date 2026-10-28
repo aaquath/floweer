@@ -14,9 +14,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-
-BOT_TOKEN = "ВАШ_ТОКЕН_БОТА"
-ADMIN_IDS = [1234567890, 9876543210]  
+# ==================== НАСТРОЙКИ ====================
+BOT_TOKEN = "9096866450:AAFWeA7PUmEjKiMj5v2s-PthSPCafbBUowE"
+ADMIN_IDS = [1289964116]  # Ваши ID админов
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
